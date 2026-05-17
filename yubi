@@ -2,8 +2,8 @@
 set -euo pipefail
 
 declare -A YUBI_KEYS=(
-  ["terry"]="ABC123"
-  ["jerry"]="DEF456"
+  ["terry"]="x"
+  ["jerry"]="y"
 )
 
 usage() {
