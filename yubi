@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+declare -A YUBI_KEYS=(
+  ["terry"]="ABC123"
+  ["jerry"]="DEF456"
+)
+
+usage() {
+  cat <<'EOF'
+Usage:
+  yubi edit
+  yubi status
+  yubi restart
+  yubi current
+  yubi test
+  yubi list
+  yubi switch <name>
+  yubi enable
+  yubi disable
+  yubi help
+
+Examples:
+  yubi switch terry
+  yubi switch jerry
+EOF
+}
+
+current_key() {
+  git config --global --get user.signingkey 2>/dev/null || true
+}
+
+set_key() {
+  local key_id="$1"
+  git config --global user.signingkey "$key_id"
+  gpgconf --kill gpg-agent
+}
+
+key_name_for_id() {
+  local key_id="$1"
+
+  for name in "${!YUBI_KEYS[@]}"; do
+    if [[ "${YUBI_KEYS[$name]}" == "$key_id" ]]; then
+      echo "$name"
+      return 0
+    fi
+  done
+
+  echo "unknown"
+}
+
+list_keys() {
+  echo "Configured YubiKeys:"
+  for name in "${!YUBI_KEYS[@]}"; do
+    echo "  $name -> ${YUBI_KEYS[$name]}"
+  done
+}
+
+show_current() {
+  local key
+  key="$(current_key)"
+
+  if [[ -z "$key" ]]; then
+    echo "No global Git signing key is set."
+    return 0
+  fi
+
+  echo "Current Git signing key: $key"
+  echo "Alias: $(key_name_for_id "$key")"
+}
+
+test_sign() {
+  echo "test" | gpg --clearsign >/dev/null
+  echo "GPG signing worked."
+}
+
+switch_key() {
+  local name="${1:-}"
+
+  if [[ -z "$name" ]]; then
+    echo "Usage: yubi switch <name>"
+    echo
+    list_keys
+    exit 1
+  fi
+
+  if [[ -z "${YUBI_KEYS[$name]+set}" ]]; then
+    echo "Unknown YubiKey name: $name"
+    echo
+    list_keys
+    exit 1
+  fi
+
+  set_key "${YUBI_KEYS[$name]}"
+  echo "Switched to $name (${YUBI_KEYS[$name]})"
+}
+
+case "${1:-help}" in
+  edit)
+    gpg --card-edit
+    ;;
+  restart)
+    gpgconf --kill gpg-agent
+    echo "gpg-agent restarted."
+    ;;
+  status)
+    gpg --card-status
+    ;;
+  current)
+    show_current
+    ;;
+  test)
+    test_sign
+    ;;
+  list)
+    list_keys
+    ;;
+  switch)
+    switch_key "${2:-}"
+    ;;
+  enable)
+    git config --global commit.gpgsign true
+    echo "Yubi Git commit signing enabled."
+    ;;
+  disable)
+    git config --global commit.gpgsign false
+    echo "Yubi Git commit signing disabled."
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
